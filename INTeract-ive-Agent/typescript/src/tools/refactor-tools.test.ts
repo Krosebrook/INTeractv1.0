@@ -23,8 +23,8 @@ describe('refactor-tools', () => {
 
       const result = await _analyzeComplexityImpl('test.ts');
       
-      // Base (1) + 2 Ifs + 1 Else = 4
-      expect(result.cyclomaticComplexity).toBe(4);
+      // Base (1) + 2 Ifs = 3
+      expect(result.cyclomaticComplexity).toBe(3);
       expect(result.functionCount).toBe(1);
     });
 
@@ -54,6 +54,27 @@ describe('refactor-tools', () => {
 
       const result = await _findDuplicatesImpl('dir', 5);
       expect(result.duplicatesFound).toBeGreaterThan(0);
+    });
+  });
+
+  describe('_suggestRefactoringImpl', () => {
+    it('should detect dead code and naming issues', async () => {
+      const code = `
+        const UnusedVar = 10;
+        function BadNaming() {
+          console.log("hello");
+        }
+        class goodClass {}
+      `;
+      vi.mocked(fs.readFile).mockResolvedValue(code);
+
+      const result = await _suggestRefactoringImpl('test.ts');
+      
+      const namingIssues = result.suggestions.filter(s => s.type === 'naming-consistency');
+      const deadCodeIssues = result.suggestions.filter(s => s.type === 'dead-code');
+      
+      expect(namingIssues.length).toBeGreaterThan(0);
+      expect(deadCodeIssues.length).toBeGreaterThan(0);
     });
   });
 });

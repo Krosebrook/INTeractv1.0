@@ -200,78 +200,93 @@ const analyzeComplexity = tool(
  */
 export async function _suggestRefactoringImpl(filePath: string, focusArea: string = 'all') {
     const content = await fs.readFile(filePath, 'utf-8');
-    const lines = content.split('\n');
+    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
     const suggestions: Array<{
       type: string;
       line: number;
       description: string;
-      severity: string;
+      severity: 'low' | 'medium' | 'high';
       suggestion: string;
     }> = [];
 
-    // Check for naming issues
-    if (focusArea === 'all' || focusArea === 'naming') {
-      const singleLetterVars = content.match(/\b(let|const|var)\s+[a-z]\s*=/g) || [];
-      if (singleLetterVars.length > 0) {
-        suggestions.push({
-          type: 'improve-naming',
-          line: 0,
-          description: `Found ${singleLetterVars.length} single-letter variable names`,
-          severity: 'medium',
-          suggestion: 'Use descriptive variable names that convey meaning',
-        });
-      }
-    }
+    const definedNames = new Set<{ name: string; line: number }>();
+    const usedNames = new Set<string>();
 
-    // Check for structural issues
-    if (focusArea === 'all' || focusArea === 'structure') {
-      // Deeply nested code
-      let maxIndent = 0;
-      let deepestLine = 0;
-      lines.forEach((line, i) => {
-        const indent = line.search(/\S/);
-        if (indent > maxIndent) {
-          maxIndent = indent;
-          deepestLine = i + 1;
+    function visit(node: ts.Node) {
+        // Collect defined names
+        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+            definedNames.add({ name: node.name.text, line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1 });
+            // Naming check
+            if (!/^[a-z][a-zA-Z0-9]*$/.test(node.name.text)) {
+                suggestions.push({
+                    type: 'naming-consistency',
+                    line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+                    description: `Variable '${node.name.text}' does not follow camelCase convention`,
+                    severity: 'low',
+                    suggestion: 'Rename to follow camelCase'
+                });
+            }
         }
-      });
+        if (ts.isFunctionDeclaration(node) && node.name) {
+            definedNames.add({ name: node.name.text, line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1 });
+            if (!/^[a-z][a-zA-Z0-9]*$/.test(node.name.text)) {
+                suggestions.push({
+                    type: 'naming-consistency',
+                    line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+                    description: `Function '${node.name.text}' does not follow camelCase convention`,
+                    severity: 'low',
+                    suggestion: 'Rename to follow camelCase'
+                });
+            }
+        }
+        if (ts.isClassDeclaration(node) && node.name) {
+            definedNames.add({ name: node.name.text, line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1 });
+            if (!/^[A-Z][a-zA-Z0-9]*$/.test(node.name.text)) {
+                suggestions.push({
+                    type: 'naming-consistency',
+                    line: sourceFile.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+                    description: `Class '${node.name.text}' does not follow PascalCase convention`,
+                    severity: 'low',
+                    suggestion: 'Rename to follow PascalCase'
+                });
+            }
+        }
 
-      if (maxIndent > 20) { // More than 5 levels of nesting (4 spaces each)
-        suggestions.push({
-          type: 'simplify-conditional',
-          line: deepestLine,
-          description: `Deep nesting detected (${Math.floor(maxIndent / 4)} levels)`,
-          severity: 'high',
-          suggestion: 'Consider early returns, guard clauses, or extracting nested logic',
-        });
-      }
+        // Collect used names
+        if (ts.isIdentifier(node)) {
+            const parent = node.parent;
+            if (ts.isPropertyAccessExpression(parent) && parent.name === node) {
+                usedNames.add(node.text);
+            } else if (ts.isCallExpression(parent) && parent.expression === node) {
+                usedNames.add(node.text);
+            } else if (ts.isExpressionStatement(parent) || ts.isBinaryExpression(parent) || ts.isVariableDeclaration(parent) && parent.initializer === node) {
+                usedNames.add(node.text);
+            } else if (!ts.isVariableDeclaration(parent) && !ts.isFunctionDeclaration(parent) && !ts.isClassDeclaration(parent)) {
+                usedNames.add(node.text);
+            }
+        }
 
-      // Long parameter lists
-      const longParams = content.match(/\([^)]{100,}\)/g) || [];
-      if (longParams.length > 0) {
-        suggestions.push({
-          type: 'extract-class',
-          line: 0,
-          description: 'Functions with many parameters detected',
-          severity: 'medium',
-          suggestion: 'Consider using an options object or extracting a class',
-        });
-      }
+        ts.forEachChild(node, visit);
     }
 
-    // Check for potential dead code
+    visit(sourceFile);
+
+    // Dead code detection
+    if (focusArea === 'all' || focusArea === 'duplication') {
+        for (const { name, line } of definedNames) {
+            if (!usedNames.has(name) && !name.startsWith('_')) {
+                suggestions.push({
+                    type: 'dead-code',
+                    line,
+                    description: `Unused definition found: '${name}'`,
+                    severity: 'medium',
+                    suggestion: 'Remove unused definition or use it'
+                });
+            }
+        }
+    }
+
     const todoComments = (content.match(/\/\/\s*(TODO|FIXME|HACK|XXX)/gi) || []).length;
-    const commentedCode = (content.match(/\/\/\s*(const|let|var|function|if|for|while)/g) || []).length;
-
-    if (commentedCode > 3) {
-      suggestions.push({
-        type: 'remove-dead-code',
-        line: 0,
-        description: `Found ${commentedCode} instances of commented-out code`,
-        severity: 'low',
-        suggestion: 'Remove commented-out code - use version control for history',
-      });
-    }
 
     return {
       file: filePath,
