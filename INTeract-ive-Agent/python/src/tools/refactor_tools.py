@@ -140,6 +140,34 @@ async def analyze_complexity(args: dict[str, Any]) -> dict[str, Any]:
 
     # Find long functions
     long_functions: list[dict] = []
+    function_lines = 0
+    current_function = None
+    func_start_line = 0
+
+    for i, line in enumerate(lines):
+        func_match = re.match(r"^(async\s+)?def\s+(\w+)", line.lstrip())
+        if func_match:
+            if current_function:
+                # Close previous function
+                length = i - func_start_line
+                if length > 50:
+                    long_functions.append({"name": current_function, "lines": length})
+            
+            current_function = func_match.group(2)
+            func_start_line = i
+        elif current_function and line.strip() and not line.startswith(" ") and not line.startswith("\t"):
+            # If line is not indented and not empty, it might be the end of the function
+            # This is a simple heuristic for Python
+            length = i - func_start_line
+            if length > 50:
+                long_functions.append({"name": current_function, "lines": length})
+            current_function = None
+
+    # Handle the last function in the file
+    if current_function:
+        length = len(lines) - func_start_line
+        if length > 50:
+            long_functions.append({"name": current_function, "lines": length})
 
     rating = "low" if complexity < 10 else "medium" if complexity < 20 else "high"
 
@@ -148,6 +176,8 @@ async def analyze_complexity(args: dict[str, Any]) -> dict[str, Any]:
         suggestions.append("Consider breaking down complex logic into smaller functions")
     if function_count > 20:
         suggestions.append("Many functions detected - consider splitting into modules")
+    if long_functions:
+        suggestions.append(f"{len(long_functions)} function(s) exceed 50 lines - consider refactoring")
 
     return {
         "content": [{
