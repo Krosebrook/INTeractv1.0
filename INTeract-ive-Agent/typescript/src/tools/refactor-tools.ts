@@ -6,19 +6,13 @@ import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import ts from 'typescript';
 
 /**
  * Find duplicate code blocks across files
  */
-const findDuplicates = tool(
-  'find_duplicates',
-  'Find duplicate or similar code blocks across files in a directory',
-  {
-    directory: z.string().describe('Directory to search for duplicates'),
-    minLines: z.number().optional().describe('Minimum lines to consider as duplicate (default: 5)'),
-    filePattern: z.string().optional().describe('Glob pattern for files to check (e.g., "*.ts")'),
-  },
-  async ({ directory, minLines = 5, filePattern }) => {
+export async function _findDuplicatesImpl(directory: string, minLines: number = 5, filePattern?: string) {
+    // Simple duplicate detection using line hashing
     // Simple duplicate detection using line hashing
     const pattern = filePattern || '*';
     const files: string[] = [];
@@ -79,13 +73,26 @@ const findDuplicates = tool(
       .slice(0, 20); // Limit results
 
     return {
+      filesScanned: files.length,
+      duplicatesFound: duplicates.length,
+      duplicates,
+    };
+  }
+
+const findDuplicates = tool(
+  'find_duplicates',
+  'Find duplicate or similar code blocks across files in a directory',
+  {
+    directory: z.string().describe('Directory to search for duplicates'),
+    minLines: z.number().optional().describe('Minimum lines to consider as duplicate (default: 5)'),
+    filePattern: z.string().optional().describe('Glob pattern for files to check (e.g., "*.ts")'),
+  },
+  async ({ directory, minLines = 5, filePattern }) => {
+    const result = await _findDuplicatesImpl(directory, minLines, filePattern);
+    return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          filesScanned: files.length,
-          duplicatesFound: duplicates.length,
-          duplicates,
-        }, null, 2),
+        text: JSON.stringify(result, null, 2),
       }],
     };
   }
@@ -94,6 +101,83 @@ const findDuplicates = tool(
 /**
  * Analyze code complexity
  */
+export async function _analyzeComplexityImpl(filePath: string) {
+    const content = await fs.readFile(filePath, 'utf-8');
+    const sourceFile = ts.createSourceFile(filePath, content, ts.ScriptTarget.Latest, true);
+
+    let cyclomaticComplexity = 1;
+    let functionCount = 0;
+    const longFunctions: Array<{ name: string; lines: number }> = [];
+
+    function visit(node: ts.Node) {
+        // Cyclomatic Complexity increments
+        switch (node.kind) {
+            case ts.SyntaxKind.IfStatement:
+            case ts.SyntaxKind.WhileStatement:
+            case ts.SyntaxKind.DoStatement:
+            case ts.SyntaxKind.ForStatement:
+            case ts.SyntaxKind.ForInStatement:
+            case ts.SyntaxKind.ForOfStatement:
+            case ts.SyntaxKind.ConditionalExpression:
+            case ts.SyntaxKind.CaseClause:
+            case ts.SyntaxKind.CatchClause:
+                cyclomaticComplexity++;
+                break;
+            case ts.SyntaxKind.BinaryExpression:
+                const binaryExpr = node as ts.BinaryExpression;
+                if (
+                    binaryExpr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+                    binaryExpr.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+                    binaryExpr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+                ) {
+                    cyclomaticComplexity++;
+                }
+                break;
+        }
+
+        // Function detection and length
+        if (
+            ts.isFunctionDeclaration(node) ||
+            ts.isMethodDeclaration(node) ||
+            ts.isArrowFunction(node) ||
+            ts.isFunctionExpression(node)
+        ) {
+            functionCount++;
+            const { line: startLine } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+            const { line: endLine } = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
+            const lines = endLine - startLine + 1;
+
+            if (lines > 50) {
+                let name = 'anonymous';
+                if (ts.isFunctionDeclaration(node) && node.name) name = node.name.text;
+                if (ts.isMethodDeclaration(node) && ts.isIdentifier(node.name)) name = node.name.text;
+                if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) name = node.parent.name.text;
+                
+                longFunctions.push({ name, lines });
+            }
+        }
+
+        ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+
+    const lines = content.split('\n');
+    return {
+        file: filePath,
+        totalLines: lines.length,
+        codeLines: lines.filter(l => l.trim() && !l.trim().startsWith('//')).length,
+        cyclomaticComplexity,
+        complexityRating: cyclomaticComplexity < 10 ? 'low' : cyclomaticComplexity < 20 ? 'medium' : 'high',
+        functionCount,
+        longFunctions,
+        suggestions: [
+            ...(cyclomaticComplexity > 20 ? ['Consider breaking down complex logic into smaller functions'] : []),
+            ...(longFunctions.length > 0 ? [`${longFunctions.length} function(s) exceed 50 lines - consider refactoring`] : []),
+        ],
+    };
+}
+
 const analyzeComplexity = tool(
   'analyze_complexity',
   'Analyze cyclomatic complexity and other code metrics for files',
@@ -101,81 +185,11 @@ const analyzeComplexity = tool(
     filePath: z.string().describe('Path to the file to analyze'),
   },
   async ({ filePath }) => {
-    const content = await fs.readFile(filePath, 'utf-8');
-    const lines = content.split('\n');
-
-    // Simple complexity analysis
-    let complexity = 1; // Base complexity
-    const complexityKeywords = [
-      /\bif\b/, /\belse\b/, /\bwhile\b/, /\bfor\b/, /\bcase\b/,
-      /\bcatch\b/, /\b\?\b/, /\b&&\b/, /\b\|\|\b/, /\?\?/
-    ];
-
-    for (const line of lines) {
-      for (const keyword of complexityKeywords) {
-        if (keyword.test(line)) {
-          complexity++;
-        }
-      }
-    }
-
-    // Count functions
-    const functionMatches = content.match(/function\s+\w+|=>\s*{|\w+\s*\([^)]*\)\s*{/g) || [];
-
-    // Find long functions (over 50 lines)
-    const longFunctions: Array<{ name: string; lines: number }> = [];
-    const functionRegex = /(function\s+(\w+)|const\s+(\w+)\s*=.*=>)/g;
-    let match;
-
-    while ((match = functionRegex.exec(content)) !== null) {
-      const functionName = match[2] || match[3] || 'anonymous';
-      const startIndex = match.index;
-      const startLine = content.substring(0, startIndex).split('\n').length;
-
-      // Estimate function length by finding matching braces
-      let braceCount = 0;
-      let started = false;
-      let endLine = startLine;
-
-      for (let i = startLine - 1; i < lines.length; i++) {
-        const line = lines[i];
-        for (const char of line) {
-          if (char === '{') {
-            braceCount++;
-            started = true;
-          } else if (char === '}') {
-            braceCount--;
-            if (started && braceCount === 0) {
-              endLine = i + 1;
-              break;
-            }
-          }
-        }
-        if (started && braceCount === 0) break;
-      }
-
-      const functionLines = endLine - startLine + 1;
-      if (functionLines > 50) {
-        longFunctions.push({ name: functionName, lines: functionLines });
-      }
-    }
-
+    const result = await _analyzeComplexityImpl(filePath);
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          file: filePath,
-          totalLines: lines.length,
-          codeLines: lines.filter(l => l.trim() && !l.trim().startsWith('//')).length,
-          cyclomaticComplexity: complexity,
-          complexityRating: complexity < 10 ? 'low' : complexity < 20 ? 'medium' : 'high',
-          functionCount: functionMatches.length,
-          longFunctions,
-          suggestions: [
-            ...(complexity > 20 ? ['Consider breaking down complex logic into smaller functions'] : []),
-            ...(longFunctions.length > 0 ? [`${longFunctions.length} function(s) exceed 50 lines - consider refactoring`] : []),
-          ],
-        }, null, 2),
+        text: JSON.stringify(result, null, 2),
       }],
     };
   }
@@ -184,14 +198,7 @@ const analyzeComplexity = tool(
 /**
  * Suggest refactorings based on code analysis
  */
-const suggestRefactoring = tool(
-  'suggest_refactoring',
-  'Analyze code and suggest specific refactoring opportunities',
-  {
-    filePath: z.string().describe('Path to the file to analyze'),
-    focusArea: z.enum(['all', 'naming', 'structure', 'duplication', 'complexity']).optional(),
-  },
-  async ({ filePath, focusArea = 'all' }) => {
+export async function _suggestRefactoringImpl(filePath: string, focusArea: string = 'all') {
     const content = await fs.readFile(filePath, 'utf-8');
     const lines = content.split('\n');
     const suggestions: Array<{
@@ -267,14 +274,26 @@ const suggestRefactoring = tool(
     }
 
     return {
+      file: filePath,
+      totalSuggestions: suggestions.length,
+      todoComments,
+      suggestions,
+    };
+}
+
+const suggestRefactoring = tool(
+  'suggest_refactoring',
+  'Analyze code and suggest specific refactoring opportunities',
+  {
+    filePath: z.string().describe('Path to the file to analyze'),
+    focusArea: z.enum(['all', 'naming', 'structure', 'duplication', 'complexity']).optional(),
+  },
+  async ({ filePath, focusArea = 'all' }) => {
+    const result = await _suggestRefactoringImpl(filePath, focusArea);
+    return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          file: filePath,
-          totalSuggestions: suggestions.length,
-          todoComments,
-          suggestions,
-        }, null, 2),
+        text: JSON.stringify(result, null, 2),
       }],
     };
   }
