@@ -18,7 +18,8 @@
       "Bash(npx claude-plugins install:*)",
       "Bash(python -m src.main:*)",
       "Bash(python:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
