@@ -26,6 +26,23 @@ async function runGitCommand(cwd: string, args: string): Promise<string> {
 /**
  * List all branches in a repository
  */
+export async function _listBranchesImpl(repoPath: string, includeRemote?: boolean) {
+  const flag = includeRemote ? '-a' : '';
+  const output = await runGitCommand(repoPath, `branch ${flag} --format="%(refname:short)|%(HEAD)|%(objectname:short)|%(committerdate:relative)"`);
+
+  const branches = output.split('\n').filter(Boolean).map(line => {
+    const [name, isCurrent, commit, date] = line.split('|');
+    return {
+      name,
+      current: isCurrent === '*',
+      lastCommit: commit,
+      lastCommitDate: date,
+    };
+  });
+
+  return { branches, count: branches.length };
+}
+
 const listBranches = tool(
   'git_list_branches',
   'List all branches in a git repository, showing which one is currently checked out',
@@ -34,23 +51,11 @@ const listBranches = tool(
     includeRemote: z.boolean().optional().describe('Include remote branches'),
   },
   async ({ repoPath, includeRemote }) => {
-    const flag = includeRemote ? '-a' : '';
-    const output = await runGitCommand(repoPath, `branch ${flag} --format="%(refname:short)|%(HEAD)|%(objectname:short)|%(committerdate:relative)"`);
-
-    const branches = output.split('\n').filter(Boolean).map(line => {
-      const [name, isCurrent, commit, date] = line.split('|');
-      return {
-        name,
-        current: isCurrent === '*',
-        lastCommit: commit,
-        lastCommitDate: date,
-      };
-    });
-
+    const result = await _listBranchesImpl(repoPath, includeRemote);
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({ branches, count: branches.length }, null, 2),
+        text: JSON.stringify(result, null, 2),
       }],
     };
   }
@@ -59,6 +64,12 @@ const listBranches = tool(
 /**
  * Switch to a different branch
  */
+export async function _switchBranchImpl(repoPath: string, branchName: string, create?: boolean) {
+  const flag = create ? '-c' : '';
+  await runGitCommand(repoPath, `switch ${flag} ${branchName}`);
+  return { success: true, branchName };
+}
+
 const switchBranch = tool(
   'git_switch_branch',
   'Switch to a different branch in the repository',
@@ -68,9 +79,7 @@ const switchBranch = tool(
     create: z.boolean().optional().describe('Create the branch if it does not exist'),
   },
   async ({ repoPath, branchName, create }) => {
-    const flag = create ? '-c' : '';
-    await runGitCommand(repoPath, `switch ${flag} ${branchName}`);
-
+    await _switchBranchImpl(repoPath, branchName, create);
     return {
       content: [{
         type: 'text' as const,
@@ -83,6 +92,18 @@ const switchBranch = tool(
 /**
  * Get the diff between two branches
  */
+export async function _diffBranchesImpl(repoPath: string, baseBranch: string, compareBranch: string, pathFilter?: string) {
+  const pathArg = pathFilter ? `-- ${pathFilter}` : '';
+  const output = await runGitCommand(repoPath, `diff ${baseBranch}...${compareBranch} --stat ${pathArg}`);
+  const fullDiff = await runGitCommand(repoPath, `diff ${baseBranch}...${compareBranch} ${pathArg}`);
+
+  return {
+    summary: output,
+    diff: fullDiff.substring(0, 50000), // Limit size
+    truncated: fullDiff.length > 50000,
+  };
+}
+
 const diffBranches = tool(
   'git_diff_branches',
   'Get the diff between two branches showing what changes exist',
@@ -93,18 +114,11 @@ const diffBranches = tool(
     pathFilter: z.string().optional().describe('Optional path filter (e.g., "src/")'),
   },
   async ({ repoPath, baseBranch, compareBranch, pathFilter }) => {
-    const pathArg = pathFilter ? `-- ${pathFilter}` : '';
-    const output = await runGitCommand(repoPath, `diff ${baseBranch}...${compareBranch} --stat ${pathArg}`);
-    const fullDiff = await runGitCommand(repoPath, `diff ${baseBranch}...${compareBranch} ${pathArg}`);
-
+    const result = await _diffBranchesImpl(repoPath, baseBranch, compareBranch, pathFilter);
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          summary: output,
-          diff: fullDiff.substring(0, 50000), // Limit size
-          truncated: fullDiff.length > 50000,
-        }, null, 2),
+        text: JSON.stringify(result, null, 2),
       }],
     };
   }
@@ -113,6 +127,24 @@ const diffBranches = tool(
 /**
  * Get commit log
  */
+export async function _getLogImpl(repoPath: string, branch?: string, limit?: number, pathFilter?: string) {
+  const branchArg = branch || 'HEAD';
+  const limitArg = limit ? `-n ${limit}` : '-n 50';
+  const pathArg = pathFilter ? `-- ${pathFilter}` : '';
+
+  const output = await runGitCommand(
+    repoPath,
+    `log ${branchArg} ${limitArg} --format="%H|%an|%ad|%s" --date=short ${pathArg}`
+  );
+
+  const commits = output.split('\n').filter(Boolean).map(line => {
+    const [hash, author, date, message] = line.split('|');
+    return { hash, author, date, message };
+  });
+
+  return { commits, count: commits.length };
+}
+
 const getLog = tool(
   'git_log',
   'Get the commit history for a branch',
@@ -123,24 +155,11 @@ const getLog = tool(
     pathFilter: z.string().optional().describe('Optional path filter'),
   },
   async ({ repoPath, branch, limit, pathFilter }) => {
-    const branchArg = branch || 'HEAD';
-    const limitArg = limit ? `-n ${limit}` : '-n 50';
-    const pathArg = pathFilter ? `-- ${pathFilter}` : '';
-
-    const output = await runGitCommand(
-      repoPath,
-      `log ${branchArg} ${limitArg} --format="%H|%an|%ad|%s" --date=short ${pathArg}`
-    );
-
-    const commits = output.split('\n').filter(Boolean).map(line => {
-      const [hash, author, date, message] = line.split('|');
-      return { hash, author, date, message };
-    });
-
+    const result = await _getLogImpl(repoPath, branch, limit, pathFilter);
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({ commits, count: commits.length }, null, 2),
+        text: JSON.stringify(result, null, 2),
       }],
     };
   }
@@ -149,6 +168,26 @@ const getLog = tool(
 /**
  * Get repository status
  */
+export async function _getStatusImpl(repoPath: string) {
+  const branch = await runGitCommand(repoPath, 'branch --show-current');
+  const status = await runGitCommand(repoPath, 'status --porcelain');
+  const remote = await runGitCommand(repoPath, 'remote -v').catch(() => 'No remotes configured');
+
+  const files = status.split('\n').filter(Boolean).map(line => ({
+    status: line.substring(0, 2).trim(),
+    path: line.substring(3),
+  }));
+
+  return {
+    currentBranch: branch,
+    remote: remote.split('\n')[0] || 'None',
+    modifiedFiles: files.filter(f => f.status === 'M').map(f => f.path),
+    stagedFiles: files.filter(f => f.status === 'A' || f.status === 'MM').map(f => f.path),
+    untrackedFiles: files.filter(f => f.status === '??').map(f => f.path),
+    totalChanges: files.length,
+  };
+}
+
 const getStatus = tool(
   'git_status',
   'Get the current status of the repository including modified, staged, and untracked files',
@@ -156,26 +195,11 @@ const getStatus = tool(
     repoPath: z.string().describe('Path to the git repository'),
   },
   async ({ repoPath }) => {
-    const branch = await runGitCommand(repoPath, 'branch --show-current');
-    const status = await runGitCommand(repoPath, 'status --porcelain');
-    const remote = await runGitCommand(repoPath, 'remote -v').catch(() => 'No remotes configured');
-
-    const files = status.split('\n').filter(Boolean).map(line => ({
-      status: line.substring(0, 2).trim(),
-      path: line.substring(3),
-    }));
-
+    const result = await _getStatusImpl(repoPath);
     return {
       content: [{
         type: 'text' as const,
-        text: JSON.stringify({
-          currentBranch: branch,
-          remote: remote.split('\n')[0] || 'None',
-          modifiedFiles: files.filter(f => f.status === 'M').map(f => f.path),
-          stagedFiles: files.filter(f => f.status === 'A' || f.status === 'MM').map(f => f.path),
-          untrackedFiles: files.filter(f => f.status === '??').map(f => f.path),
-          totalChanges: files.length,
-        }, null, 2),
+        text: JSON.stringify(result, null, 2),
       }],
     };
   }

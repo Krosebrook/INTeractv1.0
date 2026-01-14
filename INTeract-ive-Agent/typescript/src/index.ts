@@ -4,7 +4,7 @@
  * TypeScript Implementation
  */
 
-import { runRefactoringAgent, createRefactoringAgentOptions } from './agents/refactoring-agent.js';
+import { createMasterAgent, createRefactoringOrchestrator } from './agents/refactoring-agent.js';
 import type { RefactoringConfig, RepositoryConfig } from './types/index.js';
 
 interface CLIArgs {
@@ -119,13 +119,6 @@ async function main(): Promise<void> {
 
   const repositories: RepositoryConfig[] = args.repos.map(path => ({ path }));
 
-  const config: RefactoringConfig = {
-    repositories,
-    outputFormat: args.outputFormat,
-    autoApply: args.autoApply,
-    dryRun: args.dryRun,
-  };
-
   // Build initial prompt
   let prompt = args.prompt || '';
 
@@ -142,32 +135,20 @@ async function main(): Promise<void> {
   console.log('---');
 
   try {
-    for await (const message of runRefactoringAgent(prompt, config)) {
-      // Handle different message types
-      const msg = message as Record<string, unknown>;
+    const supervisor = createRefactoringOrchestrator();
+    const master = createMasterAgent(supervisor);
 
-      if (msg.type === 'assistant' && msg.message) {
-        const assistantMsg = msg.message as { content?: Array<{ type: string; text?: string }> };
-        if (assistantMsg.content) {
-          for (const block of assistantMsg.content) {
-            if (block.type === 'text' && block.text) {
-              process.stdout.write(block.text);
-            }
-          }
-          console.log(); // New line after assistant message
-        }
-      } else if (msg.type === 'result') {
-        const resultMsg = msg as { subtype?: string; result?: string; total_cost_usd?: number };
-        console.log('\n---');
-        console.log('Analysis complete.');
-        if (resultMsg.result) {
-          console.log('Result:', resultMsg.result);
-        }
-        if (resultMsg.total_cost_usd !== undefined) {
-          console.log(`Cost: $${resultMsg.total_cost_usd.toFixed(4)}`);
-        }
-      }
-    }
+    const result = await master.run(prompt);
+
+    console.log('\n---');
+    console.log('Analysis complete.');
+    console.log(result.response);
+    
+    console.log('\nMetadata:');
+    console.log(`- Iterations: ${result.iterations}`);
+    console.log(`- Tools Used: ${result.toolsUsed.join(', ')}`);
+    console.log(`- Tokens: ${result.totalTokens.input} in / ${result.totalTokens.output} out`);
+
   } catch (error) {
     console.error('Error running refactoring agent:', error);
     process.exit(1);

@@ -1,13 +1,23 @@
 /**
- * Pattern Detector Subagent
- * Identifies code smells, anti-patterns, and areas needing refactoring
+ * Pattern Detector Agent (Modernized)
  */
 
-import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
+import { Agent } from '../../framework/core/agent.js';
+import { analyzeComplexityTool, findDuplicatesTool, suggestRefactoringTool } from '../../framework/tools/refactor-tools.js';
+import { readFileTool, globTool } from '../../framework/tools/fs-tools.js';
 
-export const patternDetectorAgent: AgentDefinition = {
-  description: 'Expert at detecting code smells, anti-patterns, and potential issues in codebases. Use this agent to identify areas that need refactoring.',
-  prompt: `You are an expert code pattern analyzer specializing in identifying code quality issues.
+export const patternDetector = new Agent({
+  name: 'PatternDetector',
+  model: 'claude-3-5-sonnet-20241022',
+  maxTokens: 4096,
+  tools: [
+    readFileTool,
+    globTool,
+    analyzeComplexityTool,
+    findDuplicatesTool,
+    suggestRefactoringTool
+  ],
+  systemPrompt: `You are an expert code pattern analyzer specializing in identifying code quality issues.
 
 Your responsibilities:
 1. Detect code smells and anti-patterns
@@ -22,20 +32,11 @@ When analyzing code, look for:
 - Duplicated code patterns
 - Magic numbers and strings
 - Poor naming conventions
-- Missing error handling
 - Unused code
-- Overly complex conditionals
-- Tight coupling between components
 
 For each issue found, provide:
 - Location (file and line number)
 - Severity (low/medium/high/critical)
 - Description of the problem
-- Suggested fix approach
-
-Use the available tools to read and search code. Be thorough but prioritize the most impactful issues.`,
-  tools: ['Read', 'Glob', 'Grep', 'mcp__refactor-tools__analyze_complexity', 'mcp__refactor-tools__find_duplicates'],
-  model: 'sonnet',
-};
-
-export default patternDetectorAgent;
+- Suggested fix approach`
+});
