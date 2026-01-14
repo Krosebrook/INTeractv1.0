@@ -5,7 +5,7 @@
  */
 
 import { createMasterAgent, createRefactoringOrchestrator } from './agents/refactoring-agent.js';
-import type { RefactoringConfig, RepositoryConfig } from './types/index.js';
+import type { RepositoryConfig } from './types/index.js';
 
 interface CLIArgs {
   repos: string[];
@@ -156,8 +156,8 @@ async function main(): Promise<void> {
 }
 
 // Export for programmatic use
-export { runRefactoringAgent, createRefactoringAgentOptions };
-export type { RefactoringConfig, RepositoryConfig };
+export { createMasterAgent, createRefactoringOrchestrator };
+export type { RepositoryConfig };
 
 // Run if executed directly
 main().catch(console.error);
