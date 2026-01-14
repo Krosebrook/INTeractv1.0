@@ -1,0 +1,167 @@
+"""Preview and reporting tools for the refactoring agent."""
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from claude_agent_sdk import tool, create_sdk_mcp_server
+
+
+@tool(
+    "generate_diff_preview",
+    "Generate a visual diff preview showing before and after changes",
+    {"file_path": str, "original_content": str, "new_content": str, "context_lines": int},
+)
+async def generate_diff_preview(args: dict[str, Any]) -> dict[str, Any]:
+    """Generate a diff preview between original and proposed changes."""
+    file_path = args["file_path"]
+    original_content = args["original_content"]
+    new_content = args["new_content"]
+    context_lines = args.get("context_lines", 3)
+
+    original_lines = original_content.split("\n")
+    new_lines = new_content.split("\n")
+
+    changes: list[dict] = []
+    max_len = max(len(original_lines), len(new_lines))
+
+    for i in range(max_len):
+        orig_line = original_lines[i] if i < len(original_lines) else None
+        new_line = new_lines[i] if i < len(new_lines) else None
+
+        if orig_line is None and new_line is not None:
+            changes.append({"type": "add", "line_num": i + 1, "content": new_line})
+        elif new_line is None and orig_line is not None:
+            changes.append({"type": "remove", "line_num": i + 1, "content": orig_line})
+        elif orig_line != new_line:
+            changes.append({"type": "remove", "line_num": i + 1, "content": orig_line or ""})
+            changes.append({"type": "add", "line_num": i + 1, "content": new_line or ""})
+        else:
+            changes.append({"type": "unchanged", "line_num": i + 1, "content": orig_line or ""})
+
+    # Create unified diff format
+    diff_output = f"--- a/{file_path}\n+++ b/{file_path}\n"
+
+    added_count = sum(1 for c in changes if c["type"] == "add")
+    removed_count = sum(1 for c in changes if c["type"] == "remove")
+
+    for change in changes:
+        if change["type"] == "add":
+            diff_output += f"+{change['content']}\n"
+        elif change["type"] == "remove":
+            diff_output += f"-{change['content']}\n"
+
+    return {
+        "content": [{
+            "type": "text",
+            "text": json.dumps({
+                "file": file_path,
+                "additions": added_count,
+                "deletions": removed_count,
+                "diff": diff_output,
+                "summary": f"{added_count} additions, {removed_count} deletions",
+            }, indent=2),
+        }]
+    }
+
+
+@tool(
+    "create_summary_report",
+    "Generate a comprehensive summary report of refactoring analysis",
+    {"repository_path": str, "analysis_results": str, "output_path": str},
+)
+async def create_summary_report(args: dict[str, Any]) -> dict[str, Any]:
+    """Create a summary report of all refactoring suggestions."""
+    repository_path = args["repository_path"]
+    analysis_results = args["analysis_results"]
+    output_path = args.get("output_path")
+
+    try:
+        results = json.loads(analysis_results)
+    except json.JSONDecodeError:
+        return {
+            "content": [{
+                "type": "text",
+                "text": "Error: Invalid JSON in analysis_results",
+            }],
+            "is_error": True,
+        }
+
+    now = datetime.now().isoformat()
+
+    # Build complexity section
+    complexity_items = []
+    if results.get("complexity"):
+        for c in results["complexity"]:
+            complexity_items.append(f"- {c.get('file', 'N/A')}: Complexity score {c.get('score', 'N/A')}")
+    complexity_section = "\n".join(complexity_items) if complexity_items else "No complexity issues found"
+
+    # Build duplicates section
+    duplicate_items = []
+    if results.get("duplicates"):
+        for d in results["duplicates"]:
+            duplicate_items.append(f"- {d.get('count', 'N/A')} occurrences: {d.get('description', 'N/A')}")
+    duplicates_section = "\n".join(duplicate_items) if duplicate_items else "No significant duplication found"
+
+    # Build suggestions section
+    suggestion_items = []
+    if results.get("suggestions"):
+        for s in results["suggestions"]:
+            suggestion_items.append(f"- **{s.get('type', 'N/A')}** in {s.get('file', 'N/A')}: {s.get('description', 'N/A')}")
+    suggestions_section = "\n".join(suggestion_items) if suggestion_items else "No suggestions"
+
+    report = f"""# Refactoring Analysis Report
+
+## Repository
+- **Path:** {repository_path}
+- **Generated:** {now}
+
+## Summary
+- **Files Analyzed:** {results.get('files_analyzed', 'N/A')}
+- **Total Suggestions:** {results.get('total_suggestions', 0)}
+- **Critical Issues:** {results.get('critical_issues', 0)}
+
+## Findings by Category
+
+### Code Complexity
+{complexity_section}
+
+### Code Duplication
+{duplicates_section}
+
+### Refactoring Suggestions
+{suggestions_section}
+
+## Recommended Actions
+
+1. Address critical issues first
+2. Review and apply suggested refactorings
+3. Re-run analysis to verify improvements
+
+---
+*Generated by INTeract-ive Agent*
+"""
+
+    if output_path:
+        Path(output_path).write_text(report, encoding="utf-8")
+
+    return {
+        "content": [{
+            "type": "text",
+            "text": json.dumps({
+                "report": report,
+                "saved_to": output_path or "Not saved",
+                "generated_at": now,
+            }, indent=2),
+        }]
+    }
+
+
+def create_preview_tools_server():
+    """Create the preview tools MCP server."""
+    return create_sdk_mcp_server(
+        name="preview-tools",
+        version="1.0.0",
+        tools=[generate_diff_preview, create_summary_report],
+    )

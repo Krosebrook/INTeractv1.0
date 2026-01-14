@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npm install)",
+      "Bash(npx tsc:*)",
+      "Bash(python -m py_compile:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(cat:*)",
+      "Bash(npm run build:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
+    ]
+  }
+}
