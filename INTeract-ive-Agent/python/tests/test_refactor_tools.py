@@ -2,7 +2,11 @@ import pytest
 import os
 import json
 from pathlib import Path
-from src.tools.refactor_tools import analyze_complexity, find_duplicates, suggest_refactoring
+from src.tools.refactor_tools import (
+    _analyze_complexity_impl, 
+    _find_duplicates_impl, 
+    _suggest_refactoring_impl
+)
 
 @pytest.fixture
 def temp_repo(tmp_path):
@@ -33,7 +37,7 @@ def temp_repo(tmp_path):
 @pytest.mark.asyncio
 async def test_analyze_complexity_small(temp_repo):
     file_path = str(temp_repo / "small_func.py")
-    result = await analyze_complexity.fn({"file_path": file_path})
+    result = await _analyze_complexity_impl(file_path)
     data = json.loads(result["content"][0]["text"])
     
     assert data["file"] == file_path
@@ -44,7 +48,7 @@ async def test_analyze_complexity_small(temp_repo):
 @pytest.mark.asyncio
 async def test_analyze_complexity_long(temp_repo):
     file_path = str(temp_repo / "long_func.py")
-    result = await analyze_complexity.fn({"file_path": file_path})
+    result = await _analyze_complexity_impl(file_path)
     data = json.loads(result["content"][0]["text"])
     
     assert data["function_count"] == 1
@@ -55,7 +59,7 @@ async def test_analyze_complexity_long(temp_repo):
 
 @pytest.mark.asyncio
 async def test_find_duplicates(temp_repo):
-    result = await find_duplicates.fn({"directory": str(temp_repo), "min_lines": 3})
+    result = await _find_duplicates_impl(str(temp_repo), min_lines=3)
     data = json.loads(result["content"][0]["text"])
     
     assert data["duplicates_found"] >= 1
@@ -71,7 +75,7 @@ async def test_find_duplicates(temp_repo):
 @pytest.mark.asyncio
 async def test_suggest_refactoring(temp_repo):
     file_path = str(temp_repo / "long_func.py")
-    result = await suggest_refactoring.fn({"file_path": file_path})
+    result = await _suggest_refactoring_impl(file_path)
     data = json.loads(result["content"][0]["text"])
     
     assert "suggestions" in data
@@ -93,7 +97,7 @@ if __name__ == "__main__":
             f2.write_text("def long():\n" + "\n".join([f"    print({i})" for i in range(100)]))
             
             print("Running analyze_complexity check...")
-            res = await analyze_complexity.fn({"file_path": str(f2)})
+            res = await _analyze_complexity_impl(str(f2))
             print(res["content"][0]["text"])
             
             print("\nRunning find_duplicates check...")
@@ -102,7 +106,7 @@ if __name__ == "__main__":
             dup = "def d():\n  x=1\n  y=2\n  return x+y\n"
             f3.write_text(dup)
             f4.write_text(dup)
-            res = await find_duplicates.fn({"directory": str(repo), "min_lines": 3})
+            res = await _find_duplicates_impl(str(repo), min_lines=3)
             print(res["content"][0]["text"])
 
     asyncio.run(run_manual_tests())

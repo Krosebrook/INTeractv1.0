@@ -10,17 +10,8 @@ from typing import Any
 from claude_agent_sdk import tool, create_sdk_mcp_server
 
 
-@tool(
-    "find_duplicates",
-    "Find duplicate or similar code blocks across files in a directory",
-    {"directory": str, "min_lines": int, "file_pattern": str},
-)
-async def find_duplicates(args: dict[str, Any]) -> dict[str, Any]:
+async def _find_duplicates_impl(directory: str, min_lines: int = 5, file_pattern: str = "*") -> dict[str, Any]:
     """Find duplicate code blocks across files."""
-    directory = args["directory"]
-    min_lines = args.get("min_lines", 5)
-    file_pattern = args.get("file_pattern", "*")
-
     files: list[Path] = []
 
     def walk_dir(dir_path: Path) -> None:
@@ -53,10 +44,11 @@ async def find_duplicates(args: dict[str, Any]) -> dict[str, Any]:
                 if len(block_text) < 50:
                     continue
 
-                # Simple hash
-                block_hash = hash(block_text) % (10**10)
+                # Use a stable hash (like hashlib) instead of hash() as it's not stable across runs in Python 3
+                import hashlib
+                block_hash = hashlib.md5(block_text.encode()).hexdigest()[:16]
 
-                block_hashes[str(block_hash)].append({
+                block_hashes[block_hash].append({
                     "file": str(file_path.relative_to(directory)),
                     "start_line": i + 1,
                     "lines": block[:3],
@@ -93,14 +85,20 @@ async def find_duplicates(args: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
-    "analyze_complexity",
-    "Analyze cyclomatic complexity and other code metrics for files",
-    {"file_path": str},
+    "find_duplicates",
+    "Find duplicate or similar code blocks across files in a directory",
+    {"directory": str, "min_lines": int, "file_pattern": str},
 )
-async def analyze_complexity(args: dict[str, Any]) -> dict[str, Any]:
-    """Analyze code complexity."""
-    file_path = args["file_path"]
+async def find_duplicates(args: dict[str, Any]) -> dict[str, Any]:
+    return await _find_duplicates_impl(
+        args["directory"], 
+        args.get("min_lines", 5), 
+        args.get("file_pattern", "*")
+    )
 
+
+async def _analyze_complexity_impl(file_path: str) -> dict[str, Any]:
+    """Analyze code complexity."""
     content = Path(file_path).read_text(encoding="utf-8", errors="ignore")
     lines = content.split("\n")
 
@@ -197,15 +195,16 @@ async def analyze_complexity(args: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
-    "suggest_refactoring",
-    "Analyze code and suggest specific refactoring opportunities",
-    {"file_path": str, "focus_area": str},
+    "analyze_complexity",
+    "Analyze cyclomatic complexity and other code metrics for files",
+    {"file_path": str},
 )
-async def suggest_refactoring(args: dict[str, Any]) -> dict[str, Any]:
-    """Suggest refactorings for a file."""
-    file_path = args["file_path"]
-    focus_area = args.get("focus_area", "all")
+async def analyze_complexity(args: dict[str, Any]) -> dict[str, Any]:
+    return await _analyze_complexity_impl(args["file_path"])
 
+
+async def _suggest_refactoring_impl(file_path: str, focus_area: str = "all") -> dict[str, Any]:
+    """Suggest refactorings for a file."""
     content = Path(file_path).read_text(encoding="utf-8", errors="ignore")
     lines = content.split("\n")
     suggestions: list[dict] = []
@@ -245,15 +244,28 @@ async def suggest_refactoring(args: dict[str, Any]) -> dict[str, Any]:
     todo_comments = len(re.findall(r"#\s*(TODO|FIXME|HACK|XXX)", content, re.I))
     commented_code = len(re.findall(r"#\s*(def|class|if|for|while|import)", content))
 
-    if commented_code > 3:
-        suggestions.append({
-            "type": "remove-dead-code",
-            "line": 0,
-            "description": f"Found {commented_code} instances of commented-out code",
-            "severity": "low",
-            "suggestion": "Remove commented-out code - use version control for history",
-        })
+    return {
+        "content": [{
+            "type": "text",
+            "text": json.dumps({
+                "file": file_path,
+                "total_suggestions": len(suggestions),
+                "todo_comments": todo_comments,
+                "suggestions": suggestions,
+            }, indent=2),
+        }]
+    }
 
+@tool(
+    "suggest_refactoring",
+    "Analyze code and suggest specific refactoring opportunities",
+    {"file_path": str, "focus_area": str},
+)
+async def suggest_refactoring(args: dict[str, Any]) -> dict[str, Any]:
+    return await _suggest_refactoring_impl(
+        args["file_path"], 
+        args.get("focus_area", "all")
+    )
     return {
         "content": [{
             "type": "text",

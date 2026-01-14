@@ -14,7 +14,8 @@
       "Bash(findstr:*)",
       "Bash(wc:*)",
       "Bash(del \"C:\\\\Users\\\\kyler\\\\INTeract\\\\.claude\\\\hookify.block-dangerous-bash.local.md\")",
-      "Bash(del \"C:\\\\Users\\\\kyler\\\\INTeract\\\\.claude\\\\hookify.block-force-push.local.md\")"
+      "Bash(del \"C:\\\\Users\\\\kyler\\\\INTeract\\\\.claude\\\\hookify.block-force-push.local.md\")",
+      "Bash(npx claude-plugins install:*)"
     ]
   }
 }
