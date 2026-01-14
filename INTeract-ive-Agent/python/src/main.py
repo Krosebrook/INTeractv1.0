@@ -1,142 +1,70 @@
-#!/usr/bin/env python3
-"""INTeract-ive Agent - Full-featured Refactoring Agent (Python)"""
 
-import argparse
-import asyncio
 import os
 import sys
-from typing import Any
+import asyncio
+import argparse
+from typing import List
+from src.agents.refactoring_agent import create_refactoring_orchestrator, create_master_agent
 
-from .agents import run_refactoring_agent
-from .types import RefactoringConfig, RepositoryConfig
-
-
-def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        prog="interact-ive-agent",
-        description="INTeract-ive Agent - Full-featured Refactoring Agent",
-    )
-
-    parser.add_argument(
-        "repos",
-        nargs="*",
-        help="Repository paths to analyze",
-    )
-    parser.add_argument(
-        "-r",
-        "--repo",
-        action="append",
-        dest="extra_repos",
-        help="Additional repository path (can be used multiple times)",
-    )
-    parser.add_argument(
-        "-p",
-        "--prompt",
-        help="Initial prompt for the agent",
-    )
-    parser.add_argument(
-        "--auto-apply",
-        action="store_true",
-        help="Automatically apply suggested changes",
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be changed without applying",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        choices=["detailed", "summary", "json"],
-        default="detailed",
-        help="Output format (default: detailed)",
-    )
-
+def parse_args():
+    parser = argparse.ArgumentParser(description="INTeract-ive Agent - Refactoring Agent")
+    parser.add_argument("repos", nargs="*", help="Repository paths to analyze")
+    parser.add_argument("-r", "--repo", action="append", dest="repos_opt", help="Add a repository path to analyze")
+    parser.add_argument("-p", "--prompt", help="Initial prompt for the agent")
+    parser.add_argument("--auto-apply", action="store_true", help="Automatically apply suggested changes")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be changed without applying")
+    parser.add_argument("-o", "--output", choices=["detailed", "summary", "json"], default="detailed", help="Output format")
+    
     return parser.parse_args()
 
-
-def format_message(message: Any) -> str | None:
-    """Format a message for display."""
-    if hasattr(message, "type"):
-        if message.type == "assistant":
-            if hasattr(message, "content"):
-                text_parts = []
-                for block in message.content:
-                    if hasattr(block, "text"):
-                        text_parts.append(block.text)
-                if text_parts:
-                    return "".join(text_parts)
-        elif message.type == "result":
-            result_text = []
-            result_text.append("\n---")
-            result_text.append("Analysis complete.")
-            if hasattr(message, "result") and message.result:
-                result_text.append(f"Result: {message.result}")
-            if hasattr(message, "total_cost_usd") and message.total_cost_usd is not None:
-                result_text.append(f"Cost: ${message.total_cost_usd:.4f}")
-            return "\n".join(result_text)
-
-    return None
-
-
-async def main_async() -> int:
-    """Async main function."""
+async def main():
     args = parse_args()
-
+    
+    # Combine positional args and -r args
+    repos = args.repos or []
+    if args.repos_opt:
+        repos.extend(args.repos_opt)
+        
+    if not repos:
+        repos = [os.getcwd()]
+        
     # Check for API key
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Error: ANTHROPIC_API_KEY environment variable is required.", file=sys.stderr)
-        print("Get your API key from: https://console.anthropic.com/", file=sys.stderr)
-        return 1
-
-    # Collect all repos
-    repos = list(args.repos) if args.repos else []
-    if args.extra_repos:
-        repos.extend(args.extra_repos)
-
-    # Default to current directory
-    if not repos:
-        repos.append(os.getcwd())
-
-    repositories = [RepositoryConfig(path=r) for r in repos]
-
-    config = RefactoringConfig(
-        repositories=repositories,
-        output_format=args.output,
-        auto_apply=args.auto_apply,
-        dry_run=args.dry_run,
-    )
-
+        print("Error: ANTHROPIC_API_KEY environment variable is required.")
+        print("Get your API key from: https://console.anthropic.com/")
+        sys.exit(1)
+        
     # Build initial prompt
     prompt = args.prompt or ""
+    
     if not prompt:
-        if len(repositories) == 1:
-            prompt = f"Analyze the repository at {repositories[0].path} and identify refactoring opportunities. Start by getting the git status and then look for code that could be improved."
+        if len(repos) == 1:
+            prompt = f"Analyze the repository at {repos[0]} and identify refactoring opportunities. Start by getting the git status and then look for code that could be improved."
         else:
-            repo_list = ", ".join(r.path for r in repositories)
-            prompt = f"I have {len(repositories)} repositories to refactor: {repo_list}. Help me analyze and improve them."
+            prompt = f"I have {len(repos)} repositories to refactor: {', '.join(repos)}. Help me analyze and improve them."
 
     print("INTeract-ive Agent - Starting refactoring analysis...")
-    print(f"Repositories: {', '.join(r.path for r in repositories)}")
+    print(f"Repositories: {', '.join(repos)}")
     print("---")
 
     try:
-        async for message in run_refactoring_agent(prompt, config):
-            formatted = format_message(message)
-            if formatted:
-                print(formatted)
+        supervisor = create_refactoring_orchestrator()
+        master = create_master_agent(supervisor)
+
+        result = await master.run(prompt)
+
+        print("\n---")
+        print("Analysis complete.")
+        print(result["response"])
+        
+        print("\nMetadata:")
+        print(f"- Iterations: {result['iterations']}")
+        print(f"- Tools Used: {', '.join(result['tools_used'])}")
+        print(f"- Tokens: {result['total_tokens']['input']} in / {result['total_tokens']['output']} out")
+
     except Exception as e:
         print(f"Error running refactoring agent: {e}", file=sys.stderr)
-        return 1
-
-    return 0
-
-
-def main() -> None:
-    """Entry point."""
-    sys.exit(asyncio.run(main_async()))
-
+        sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

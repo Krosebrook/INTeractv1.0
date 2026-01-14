@@ -1,137 +1,62 @@
-"""Main Refactoring Agent - Orchestrates the refactoring process."""
 
-from typing import AsyncIterator, Any
-
-from claude_agent_sdk import query, ClaudeAgentOptions
-
-from ..tools import (
-    create_git_tools_server,
-    create_refactor_tools_server,
-    create_preview_tools_server,
+from src.framework.core.agent import Agent
+from src.framework.orchestration.supervisor import SupervisorAgent
+from src.framework.tools.git_tools import (
+    list_branches_tool,
+    switch_branch_tool,
+    get_status_tool,
+    get_log_tool,
+    diff_branches_tool
 )
-from ..types import RefactoringConfig
-from .subagents import (
-    pattern_detector_agent,
-    code_analyzer_agent,
-    diff_generator_agent,
-)
+from src.framework.tools.preview_tools import create_summary_report_tool
+from src.framework.tools.supervisor_tool import create_supervisor_tool
 
-REFACTORING_SYSTEM_PROMPT = """You are an expert code refactoring agent. Your purpose is to analyze codebases, identify improvement opportunities, and apply refactorings safely.
+from src.agents.subagents.pattern_detector import pattern_detector
+from src.agents.subagents.code_analyzer import code_analyzer
+from src.agents.subagents.diff_generator import diff_generator
 
-## Your Capabilities
+def create_refactoring_orchestrator() -> SupervisorAgent:
+    """Configure the Modernized Refactoring Supervisor."""
+    supervisor = SupervisorAgent({
+        "max_concurrent_tasks": 3,
+        "task_timeout_ms": 120000,
+        "max_retries": 3
+    })
 
-You have access to:
-1. **Git Tools** - For branch management, diffs, and version control
-2. **Refactoring Tools** - For code analysis, duplicate detection, and complexity measurement
-3. **Preview Tools** - For generating diffs and summary reports
-4. **Subagents**:
-   - pattern-detector: Finds code smells and anti-patterns
-   - code-analyzer: Analyzes architecture and dependencies
-   - diff-generator: Creates and applies code changes
+    # Register Worker Agents
+    supervisor.register_worker('pattern-detector', pattern_detector, ['detect-patterns'])
+    supervisor.register_worker('code-analyzer', code_analyzer, ['analyze-structure'])
+    supervisor.register_worker('diff-generator', diff_generator, ['generate-diff'])
 
-## Workflow
+    return supervisor
 
-When asked to refactor code:
-
-1. **Understand the scope**
-   - What repository/files are being targeted?
-   - What type of refactoring is requested?
-   - Are there specific concerns or constraints?
-
-2. **Analyze the codebase**
-   - Use git tools to understand the current state
-   - Use pattern-detector to find issues
-   - Use code-analyzer to understand structure
-
-3. **Propose changes**
-   - Prioritize by impact and risk
-   - Generate diffs for review
-   - Explain the benefits of each change
-
-4. **Apply changes (if approved)**
-   - Make changes incrementally
-   - Verify each change doesn't break anything
-   - Generate a summary report
-
-## Guidelines
-
-- Always preview changes before applying them
-- Preserve existing functionality
-- Follow the project's coding style
-- Document significant changes
-- Be conservative with risky refactorings
-- Ask for clarification when the request is ambiguous
-
-## Multi-Repository Support
-
-You can work with multiple repositories. When switching between repos:
-- Use git_status to confirm current location
-- Use git_switch_branch for branch navigation
-- Keep track of which repo you're analyzing
-
-Start by asking what the user wants to refactor, or analyze the current directory if a path is provided."""
-
-
-def create_refactoring_agent_options(
-    config: RefactoringConfig | None = None,
-) -> ClaudeAgentOptions:
-    """Create the refactoring agent options."""
-    git_tools = create_git_tools_server()
-    refactor_tools = create_refactor_tools_server()
-    preview_tools = create_preview_tools_server()
-
-    agents = {
-        "pattern-detector": pattern_detector_agent,
-        "code-analyzer": code_analyzer_agent,
-        "diff-generator": diff_generator_agent,
-    }
-
-    cwd = None
-    if config and config.repositories:
-        cwd = config.repositories[0].path
-
-    return ClaudeAgentOptions(
-        system_prompt=REFACTORING_SYSTEM_PROMPT,
-        allowed_tools=[
-            # Built-in tools
-            "Read",
-            "Write",
-            "Edit",
-            "Bash",
-            "Glob",
-            "Grep",
-            "Task",
-            # MCP tools - Git
-            "mcp__git-tools__git_list_branches",
-            "mcp__git-tools__git_switch_branch",
-            "mcp__git-tools__git_diff_branches",
-            "mcp__git-tools__git_log",
-            "mcp__git-tools__git_status",
-            # MCP tools - Refactoring
-            "mcp__refactor-tools__find_duplicates",
-            "mcp__refactor-tools__analyze_complexity",
-            "mcp__refactor-tools__suggest_refactoring",
-            # MCP tools - Preview
-            "mcp__preview-tools__generate_diff_preview",
-            "mcp__preview-tools__create_summary_report",
+def create_master_agent(supervisor: SupervisorAgent) -> Agent:
+    """Configure the Master Agent with Supervisor access."""
+    return Agent({
+        "name": "MasterRefactoringAgent",
+        "model": "claude-3-5-sonnet-20241022",
+        "max_tokens": 8192,
+        "tools": [
+            list_branches_tool,
+            switch_branch_tool,
+            get_status_tool,
+            get_log_tool,
+            diff_branches_tool,
+            create_summary_report_tool,
+            create_supervisor_tool(supervisor)
         ],
-        mcp_servers={
-            "git-tools": git_tools,
-            "refactor-tools": refactor_tools,
-            "preview-tools": preview_tools,
-        },
-        agents=agents,
-        permission_mode="acceptEdits" if (config and config.auto_apply) else "default",
-        cwd=cwd,
-    )
+        "system_prompt": """You are the Master Refactoring Agent. Your job is to orchestrate a team of specialized subagents to refactor code safely.
 
+## Your Subagents
+1. **pattern-detector**: Finds code smells and anti-patterns. Use for "detect-patterns" tasks.
+2. **code-analyzer**: Analyzes architecture and complexity. Use for "analyze-structure" tasks.
+3. **diff-generator**: Creates and applies changes. Use for "generate-diff" tasks.
 
-async def run_refactoring_agent(
-    prompt: str,
-    config: RefactoringConfig | None = None,
-) -> AsyncIterator[Any]:
-    """Run the refactoring agent with a prompt."""
-    options = create_refactoring_agent_options(config)
+## Your Workflow
+1. **Explore**: Use Git tools to understand the repository state.
+2. **Tasking**: Delegate analysis to subagents using the delegate_task tool.
+3. **Review**: Combine findings and propose a plan to the user.
+4. **Execute**: Delegate change generation to the diff-generator.
 
-    async for message in query(prompt=prompt, options=options):
-        yield message
+You have direct access to Git and Reporting tools. For complex analysis and transformations, ALWAYS delegate to subagents."""
+    })

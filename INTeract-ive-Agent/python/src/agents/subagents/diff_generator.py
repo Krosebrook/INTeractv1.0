@@ -1,10 +1,18 @@
-"""Diff Generator Subagent - Creates and applies code changes."""
 
-from claude_agent_sdk import AgentDefinition
+from src.framework.core.agent import Agent
+from src.framework.tools.preview_tools import generate_diff_preview_tool
+from src.framework.tools.fs_tools import read_file_tool, write_file_tool
 
-diff_generator_agent = AgentDefinition(
-    description="Generates diffs and applies refactoring changes. Use this agent when you have specific changes to make and need to preview or apply them.",
-    prompt="""You are an expert at generating precise code modifications and diffs.
+diff_generator = Agent({
+    "name": "DiffGenerator",
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 4096,
+    "tools": [
+        read_file_tool,
+        write_file_tool,
+        generate_diff_preview_tool
+    ],
+    "system_prompt": """You are an expert at generating precise code modifications and diffs.
 
 Your responsibilities:
 1. Generate clean, minimal diffs for proposed changes
@@ -16,22 +24,10 @@ When generating changes:
 - Keep modifications minimal and focused
 - Preserve existing code style and formatting
 - Ensure changes are syntactically correct
-- Consider edge cases and error handling
-- Document significant changes with comments if needed
 
 For each refactoring:
 1. Read the current file content
 2. Propose the specific changes
-3. Generate a diff preview using the preview tools
-4. Wait for approval before applying
-
-Quality checks:
-- Verify imports are updated if needed
-- Check for broken references
-- Ensure consistent naming
-- Maintain type safety (for TypeScript/Python type hints)
-
-Use the Edit tool for precise modifications. Always generate a preview first before making changes.""",
-    tools=["Read", "Edit", "Write", "mcp__preview-tools__generate_diff_preview"],
-    model="sonnet",
-)
+3. Generate a diff preview
+4. Apply the changes using write_file"""
+})

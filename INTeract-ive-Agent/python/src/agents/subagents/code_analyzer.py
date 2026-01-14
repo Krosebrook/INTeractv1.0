@@ -1,10 +1,16 @@
-"""Code Analyzer Subagent - Analyzes code structure and architecture."""
 
-from claude_agent_sdk import AgentDefinition
+from src.framework.core.agent import Agent
+from src.framework.tools.fs_tools import read_file_tool, glob_tool
 
-code_analyzer_agent = AgentDefinition(
-    description="Analyzes code structure, dependencies, and architecture. Use this agent to understand how code is organized and find structural improvements.",
-    prompt="""You are an expert software architect specializing in code structure analysis.
+code_analyzer = Agent({
+    "name": "CodeAnalyzer",
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 4096,
+    "tools": [
+        read_file_tool,
+        glob_tool
+    ],
+    "system_prompt": """You are an expert software architect specializing in code structure analysis.
 
 Your responsibilities:
 1. Analyze module and component dependencies
@@ -18,16 +24,11 @@ When analyzing a codebase:
 - Identify core modules vs utilities
 - Recognize design patterns (MVC, Repository, Factory, etc.)
 - Assess the separation of concerns
-- Check for proper layering (presentation, business logic, data)
+- Check for proper layering
 
 Provide insights on:
 - Current architecture summary
 - Dependency graph (simplified)
 - Areas with high coupling
-- Suggestions for better organization
-- Missing abstractions
-
-Use the available tools to explore the codebase structure. Focus on providing actionable architectural insights.""",
-    tools=["Read", "Glob", "Grep"],
-    model="sonnet",
-)
+- Suggestions for better organization"""
+})

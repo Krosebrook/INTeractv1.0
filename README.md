@@ -1,99 +1,89 @@
-<img src="https://avatars2.githubusercontent.com/u/2810941?v=3&s=96" alt="Google Cloud Platform logo" title="Google Cloud Platform" align="right" height="96" width="96"/>
+# INTeract
 
-# Cloud Functions Hello World with Cloud Code
+Employee engagement platform with AI-powered refactoring tools.
 
-"Node.js: Hello World" is a simple HTTP-triggered Cloud Functions application that contains a sample Node.js-based script that outputs a sample "Hello World" string.
+## Repository Structure
 
-## Table of Contents
+```
+INTeract/
+├── platform/          # React 18 + Vite + Firebase employee engagement app
+│   ├── src/           # 554 React components, 47 pages
+│   ├── functions/     # 85 Firebase Cloud Functions
+│   └── docs/          # Platform-specific documentation
+│
+├── agent/             # Claude Agent SDK refactoring tool
+│   ├── typescript/    # TypeScript implementation
+│   └── python/        # Python implementation
+│
+├── docs/
+│   ├── spec-kit/      # 12-document specification kit (PRD, API, Security, etc.)
+│   ├── base44/        # Base44 SDK documentation
+│   └── *.txt          # Summary and audit reports
+│
+└── .claude/           # Claude Code configuration
+```
 
-* [Directory contents](#directory-contents)
-* [Getting started with VS Code](#getting-started-with-vs-code)
-* [Sign up for user research](#sign-up-for-user-research)
+## Platform
 
-## Directory contents
-* `launch.json` - the required Cloud Code configurations
-* `index.js` - the Node.js “Hello World” sample’s code
-* `package.json` - includes the functions framework dependency
+The INTeract Platform is a comprehensive employee engagement solution featuring:
 
-## Getting started with VS Code
+- **Pulse Surveys** - AI-powered sentiment analysis
+- **Peer Recognition** - Social recognition with gamification
+- **Team Channels** - Secure collaboration spaces
+- **Wellness Challenges** - Wearable integration
+- **Learning Paths** - Personalized skill development
+- **Gamification** - Points, badges, leaderboards
+- **HR Analytics** - Predictive insights dashboards
 
-### Before you begin
+**Tech Stack:** React 18, Vite 6, Firebase v11, Tailwind CSS, shadcn/ui
 
-1. If you're new to Google Cloud, [create an account](https://console.cloud.google.com/freetrial/signup/tos) to evaluate how our products perform in real-world scenarios. New customers also get $300 in free credits to run, test, and deploy workloads.
+### Quick Start
 
-1. If you're testing this out to learn about the feature, [create a new project](https://pantheon.corp.google.com/projectselector2/home/dashboard) so that you can delete the project and all associated resources when you're finished.
+```bash
+cd platform
+npm install
+npm run dev
+```
 
-   You can also use this template as a starting point to create a new function in a new or existing project.
+## Agent
 
-1. Make sure that billing is enabled for your Cloud project. Learn how to [check if billing is enabled on a project](https://cloud.google.com/billing/docs/how-to/verify-billing-enabled).
+The INTeract-ive Agent analyzes and refactors the Platform codebase using Claude AI.
 
-1. [Enable the following APIs](https://pantheon.corp.google.com/projectselector2/apis/enableflow?apiid=cloudfunctions,cloudbuild.googleapis.com,artifactregistry.googleapis.com,run.googleapis.com,logging.googleapis.com,pubsub.googleapis.com&redirect=https:%2F%2Fcloud.google.com%2Ffunctions%2Fdocs%2Fcreate-deploy-nodejs):
+### Run Analysis
 
-    * Cloud Functions
-    * Cloud Build
-    * Artifact Registry
-    * Cloud Run
-    * Logging
-    * Pub/Sub
-    
-1. Install [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git). Git is required for copying samples to your machine.
+```bash
+# Windows
+agent\analyze-platform.cmd
 
-1. Install the [Cloud Code plugin](https://cloud.google.com/code/docs/vscode/install#installing) if you haven't already.
+# Or manually
+cd agent/python
+python -m src.main ../platform
+```
 
-1. Since Cloud Functions integration is currently a pre-release feature, you'll also need to [install the pre-release build](https://cloud.google.com/code/docs/vscode/insiders#get).
+### Agent Capabilities
 
-#### Create a function
+- Code smell detection (god classes, long methods, duplication)
+- Complexity analysis
+- Pattern recommendations
+- Safe refactoring with previews
 
-To create a new function using this sample, follow these steps:
+## Documentation
 
-1. Click ![Cloud Code icon](https://cloud.google.com/static/code/docs/vscode/images/cloudcode-icon.png) **Cloud Code** and then expand the **Cloud Functions** section.
+Full specification kit in `docs/spec-kit/`:
 
-1. Click **+ Create function** and select the **Node.js: Hello World** template.
+1. Product Requirements Document (PRD)
+2. Technical Specification
+3. Security & Compliance Specification
+4. API Documentation
+5. Data Model Specification
+6. User Stories & Acceptance Criteria
+7. Testing Strategy & QA Plan
+8. Deployment & Infrastructure Guide
+9. Operations Runbook
+10. Architecture Decision Records
+11. Project Charter
+12. Risk Assessment & Mitigation Plan
 
-1. Navigate to the pathway that you'd like to create your new function in, enter a name for the function, and select **Create New Application**.
+## License
 
-1. If the folder of your application doesn't appear automatically in the **Explorer**, click ![VS Code Refresh icon](https://cloud.google.com/static/code/docs/vscode/images/refresh-icon.png) **Refresh**.
-
-#### Deploy a function
-
-To deploy a function, follow these steps:
-
-1. Right-click a function and select **Deploy function**.
-
-1. In the Quickpick menu, select a GCP project to deploy your function to.
-
-1. Select a region that the function will be deployed to.
-
-1. Select a runtime.
-
-The function's deployment may take a few minutes.
-
-If the deployment fails, refer to the **Output** tab for the error message. Clicking the link takes you to the build logs in Google Cloud console and provides more detail about the error.
-
-#### Clean up
-
-To delete only the function you created for this quickstart:
-
-1. In the Cloud Functions explorer, right-click the function name and then select **Open in Cloud Console**.
-
-1. Click **Delete** and then click **Delete**.
-
-To delete your project and the project's associated resources:
-
-1. Go to the [Projects page](https://pantheon.corp.google.com/cloud-resource-manager) in the Google Cloud console.
-
-1. Select the project that you created for this quickstart and then click **Delete**.
-
-1. Type the project ID to confirm and then click **Shut down**.
-
-   This shuts down the project and schedules it for deletion.
-
-### Sign up for user research
-
-We want to hear your feedback!
-
-The Cloud Code team is inviting our user community to sign-up to participate in Google User Experience Research. 
-
-If you’re invited to join a study, you may try out a new product or tell us what you think about the products you use every day. At this time, Google is only sending invitations for upcoming remote studies. Once a study is complete, you’ll receive a token of thanks for your participation such as a gift card or some Google swag. 
-
-[Sign up using this link](https://google.qualtrics.com/jfe/form/SV_4Me7SiMewdvVYhL?reserved=1&utm_source=In-product&Q_Language=en&utm_medium=own_prd&utm_campaign=Q1&productTag=clou&campaignDate=January2021&referral_code=UXbT481079) and answer a few questions about yourself, as this will help our research team match you to studies that are a great fit.
+Proprietary - All rights reserved.
