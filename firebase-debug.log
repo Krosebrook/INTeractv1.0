@@ -1,0 +1,12 @@
+[debug] [2026-01-14T11:04:53.192Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-14T11:04:53.194Z] > authorizing via signed-in user (flashfusion01@gmail.com)
+[debug] [2026-01-14T11:04:55.654Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-14T11:04:55.654Z] > authorizing via signed-in user (flashfusion01@gmail.com)
+[debug] [2026-01-14T11:04:55.791Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-14T11:04:55.792Z] > authorizing via signed-in user (flashfusion01@gmail.com)
+[debug] [2026-01-14T11:04:55.793Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-14T11:04:55.793Z] > authorizing via signed-in user (flashfusion01@gmail.com)
+[debug] [2026-01-14T11:04:55.832Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-14T11:04:55.833Z] > authorizing via signed-in user (flashfusion01@gmail.com)
+[debug] [2026-01-14T11:04:55.834Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-01-14T11:04:55.834Z] > authorizing via signed-in user (flashfusion01@gmail.com)
